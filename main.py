@@ -1,30 +1,18 @@
 from fastapi import FastAPI, HTTPException, Query, Depends
-from pydantic import BaseModel
-from typing import List, Optional
-from sqlalchemy import create_engine, Column, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from geopy.distance import geodesic
+from utils.models import AddressCreate, AddressUpdate, QueryParams, AddressCreateWithValidation
+from utils.schemas import Address, Base
 
 # Database connection URL
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+
 # Create the database engine
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
 # Create a session local object for interacting with the database
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-# Base class for declarative class definitions
-Base = declarative_base()
-
-
-# Define the Address model
-class Address(Base):
-    __tablename__ = "addresses"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    latitude = Column(Float)
-    longitude = Column(Float)
-
 
 # Create the FastAPI application instance
 app = FastAPI()
@@ -42,22 +30,15 @@ def get_db():
         db.close()
 
 
-# Pydantic models for request and response bodies
-class AddressCreate(BaseModel):
-    name: str
-    latitude: float
-    longitude: float
-
-
-class AddressUpdate(BaseModel):
-    name: Optional[str]
-    latitude: Optional[float]
-    longitude: Optional[float]
+# Endpoint for home
+@app.get("/")
+def get_home():
+    return {"message": "This is home"}
 
 
 # Endpoint to create a new address
 @app.post("/addresses/", response_model=AddressCreate)
-def create_address(address: AddressCreate, db: SessionLocal = Depends(get_db)):
+def create_address(address: AddressCreateWithValidation, db: SessionLocal = Depends(get_db)):
     db_address = Address(**address.dict())
     db.add(db_address)
     db.commit()
@@ -99,13 +80,25 @@ def delete_address(address_id: int, db: SessionLocal = Depends(get_db)):
     return {"message": "Address deleted successfully"}
 
 
-# Endpoint to retrieve addresses within a certain distance from a given point
-@app.get("/addresses/within_distance/")
-def addresses_within_distance(latitude: float, longitude: float, distance: float = Query(...),
-                              db: SessionLocal = Depends(get_db)):
+@app.post("/addresses/within_distance/")
+def addresses_within_distance(params: QueryParams, db: SessionLocal = Depends(get_db)):
+    latitude = params.coordinates.latitude
+    longitude = params.coordinates.longitude
+    distance = params.distance
+
     addresses = db.query(Address).all()
     valid_addresses = []
     for address in addresses:
         if geodesic((latitude, longitude), (address.latitude, address.longitude)).meters <= distance:
             valid_addresses.append(address)
     return valid_addresses
+
+
+
+
+
+
+
+
+
+
